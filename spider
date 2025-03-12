@@ -1,0 +1,49 @@
+#!/bin/bash
+
+URL=$1
+
+curl--silent $URL	|			# curl the page
+grep -o '<img[^>]*src=[^>]*>' |	# get the img lines
+awk -F 'src=' '{print $2}' |	# split on src= and get second element
+awk -F '"' '{print $2}'	|		# split on " and get second element
+while read -r img; do
+	[[ "$img" =~ ^https?:// ]] || img="${URL%/}/$img"
+
+	# wget "$img"
+	echo "$img"
+done
+
+# 1. [[ ... ]]
+
+#     This is a conditional expression in Bash (also known as a test command).
+#     [[ ... ]] is more powerful than the traditional [ ... ] test command because it supports advanced features like pattern matching and regular expressions.
+#         The double square brackets allow the use of regular expressions with the =~ operator.
+
+# 2. =~
+
+#     The =~ operator is used for regular expression matching inside [[ ... ]].
+#     It checks if the value on the left side matches the pattern (regular expression) on the right side.
+#     In this case, it's checking if $img matches the regular expression ^https?://.
+
+# Explanation of the Regular Expression:
+
+#     ^: This asserts that the match happens at the start of the string.
+#     https?: The https part matches the literal string "http". The ? makes the s optional, so it matches both http and https.
+#     ://: This matches the literal characters ://, which are part of a URL.
+
+# So, [[ "$img" =~ ^https?:// ]] checks if the value of $img starts with http:// or https://.
+# 3. || (OR Operator)
+
+#     || is a logical OR operator.
+#     It means: If the first condition fails, then the second part will be executed.
+#     In this case, if $img does not start with http:// or https:// (i.e., the regular expression match fails), then the second part (img="${URL%/}/$img") will run.
+
+# 4. ${URL%/}
+
+#     This is parameter expansion in Bash, used to modify the value of a variable.
+#     ${URL%/} removes the trailing slash (/) from the value of $URL, if present.
+#         Explanation:
+#             If $URL is https://example.com/, ${URL%/} removes the trailing /, making it https://example.com.
+#             If $URL doesn't end with a /, it remains unchanged.
+
+# wget
