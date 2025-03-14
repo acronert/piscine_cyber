@@ -1,49 +1,102 @@
 #!/bin/bash
 
-URL=$1
+# COLORS
+RESET="\e[0m"
+BLACK="\e[30m"
+RED="\e[31m"
+GREEN="\e[32m"
+YELLOW="\e[33m"
+BLUE="\e[34m"
+MAGENTA="\e[35m"
+CYAN="\e[36m"
+WHITE="\e[37m"
 
-curl--silent $URL	|			# curl the page
-grep -o '<img[^>]*src=[^>]*>' |	# get the img lines
-awk -F 'src=' '{print $2}' |	# split on src= and get second element
-awk -F '"' '{print $2}'	|		# split on " and get second element
-while read -r img; do
-	[[ "$img" =~ ^https?:// ]] || img="${URL%/}/$img"
 
-	# wget "$img"
-	echo "$img"
-done
+RECURSIVE=false
+MAX_DEPTH=5
+WGET_PATH="./data/"
+URL=""
 
-# 1. [[ ... ]]
+# parse options
+parse() {
+	while [[ $# -gt 0 ]]; do		# $# is the number of args, that decreases when using shift
+		if [[ $1 == -* ]]; then		# if arg starts with '-'
+			arg="$1"
+			for (( i=1; i <${#arg}; i++ )); do	# for each char in arg (skipping '-')
+				if [[ ${arg:i:1} == 'r' ]]; then
+					RECURSIVE=true
+				elif [[ ${arg:i:1} == 'l' ]]; then
+					if [[ -n $2 && $2 =~ ^[0-9]+$ ]]; then		# -n $2 checks if $2 is not empty
+						MAX_DEPTH="$2"
+						shift
+					else
+						MAX_DEPTH=5
+					fi
+				elif [[ ${arg:i:1} == 'p' ]]; then
+					if [[ -n $2 ]]; then
+						WGET_PATH="$2"
+						shift
+					fi
+				else
+					echo "unknown argument '${arg:i:1}'"
+					exit
+				fi
+			done
+			shift
+		else
+			if [[ "$URL" == "" ]]; then
+				URL=$1
+				shift
+			else
+				echo "too many arguments"
+				exit
+			fi
+		fi
+	done
+}
 
-#     This is a conditional expression in Bash (also known as a test command).
-#     [[ ... ]] is more powerful than the traditional [ ... ] test command because it supports advanced features like pattern matching and regular expressions.
-#         The double square brackets allow the use of regular expressions with the =~ operator.
 
-# 2. =~
 
-#     The =~ operator is used for regular expression matching inside [[ ... ]].
-#     It checks if the value on the left side matches the pattern (regular expression) on the right side.
-#     In this case, it's checking if $img matches the regular expression ^https?://.
+crawl() {
+	local	url=$1
+	local	depth=$2
 
-# Explanation of the Regular Expression:
+	if [[ $depth -gt MAX_DEPTH ]]; then
+		return
+	fi
 
-#     ^: This asserts that the match happens at the start of the string.
-#     https?: The https part matches the literal string "http". The ? makes the s optional, so it matches both http and https.
-#     ://: This matches the literal characters ://, which are part of a URL.
+	echo -e "$MAGENTA Crawling in $url $RESET"
 
-# So, [[ "$img" =~ ^https?:// ]] checks if the value of $img starts with http:// or https://.
-# 3. || (OR Operator)
+	download_images $url
 
-#     || is a logical OR operator.
-#     It means: If the first condition fails, then the second part will be executed.
-#     In this case, if $img does not start with http:// or https:// (i.e., the regular expression match fails), then the second part (img="${URL%/}/$img") will run.
+	if [[ "$RECURSIVE" == true && $depth -lt $MAX_DEPTH ]]; then
+		# find hyperlinks
+		curl --silent $url |			# curl the page
+		grep -o '<a[^>]*href=[^>]*>' |	# get the hl lines
+		awk -F 'href=' '{print $2}' |	# split on href= and get second element
+		awk -F '"' '{print $2}' |		# split on " and get second element
+		while read -r link; do
+			[[ "$link" =~ ^https?:// ]] || link="${URL%/}/$link"
+			echo -e "$YELLOW  found link : $link$RESET"
+			crawl $link $((depth + 1))
+		done
+	fi
+}
 
-# 4. ${URL%/}
+download_images() {
+	local	url=$1
 
-#     This is parameter expansion in Bash, used to modify the value of a variable.
-#     ${URL%/} removes the trailing slash (/) from the value of $URL, if present.
-#         Explanation:
-#             If $URL is https://example.com/, ${URL%/} removes the trailing /, making it https://example.com.
-#             If $URL doesn't end with a /, it remains unchanged.
+	curl --silent $url |				# curl the page
+	grep -o '<img[^>]*src=[^>]*>' |		# get the img lines
+	awk -F 'src=' '{print $2}' |		# split on src= and get second element
+	awk -F '"' '{print $2}' |			# split on " and get second element
+	grep -E '*\.(jpg|jpeg|png|bmp|gif)$' |	# filter filetype
+	while read -r img; do
+		[[ "$img" =~ ^https?:// ]] || img="${URL%/}/$img"
+		echo -e "$GREEN  Dowloading: $img$RESET"
+		wget --quiet -P $WGET_PATH "$img"
+	done
+}
 
-# wget
+parse "$@"
+crawl $URL 0
