@@ -90,8 +90,9 @@ download_images() {
 	grep -E '*\.(jpg|jpeg|png|bmp|gif)$' |	# filter filetype
 	while read -r img; do
 		[[ "$img" =~ ^https?:// ]] || img="${URL%/}/$img"
-		echo -e "  Dowloading: $img"
-		wget --quiet -P $WGET_PATH "$img"
+		filename=$(basename "$img")
+		echo -e "  Dowloading: $filename"
+		curl -s -o "$WGET_PATH/$filename" "$img"
 	done
 }
 
